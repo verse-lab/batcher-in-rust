@@ -19,6 +19,7 @@ Next, clone the project, and then run `cargo build` and then `cargo run`.
 You can switch back to a stable `rustc` release by executing
 
 ```
+rustup default stable
 ```
 
 ## Counter 

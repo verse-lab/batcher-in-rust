@@ -23,7 +23,6 @@ struct Counter { value : i32 }
 #[derive(Debug)]
 enum CounterOp { Get, Incr }
 
-
 impl BatchedOp for CounterOp { type Res = Option<i32>; }
 
 impl Batched for Counter {

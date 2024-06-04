@@ -42,11 +42,6 @@ impl Batched for Counter {
                 CounterOp::Incr => {op.1(None); 1},
             }
         };
-        let det_res = 
-          ops.iter().map(|op| match op.0 {
-             CounterOp::Get => 0,
-             CounterOp::Incr => 1,
-         }).fold(0, |l,r| {l + r});
         let res = utils::parallel_reduce(ops, reduce, map).await;
         self.value += res;
     }

@@ -5,5 +5,8 @@ edition = "2021"
 
 [dependencies]
 futures = {version="0.3.30", features=["executor", "thread-pool"]}
+itertools = "0.13.0"
+par-stream = "0.10.2"
+tokio = {version = "1.38.0", features=["full"]}
 
 

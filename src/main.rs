@@ -42,8 +42,13 @@ impl Batched for Counter {
                 CounterOp::Incr => {op.1(None); 1},
             }
         };
+        let det_res = 
+          ops.iter().map(|op| match op.0 {
+             CounterOp::Get => 0,
+             CounterOp::Incr => 1,
+         }).fold(0, |l,r| {l + r});
         let res = utils::parallel_reduce(pool.clone(), ops, reduce, map).await;
-        println!("result of update was {}", res);
+        println!("result of update was {} == {}", res, det_res);
         self.value += res;
     }
 }

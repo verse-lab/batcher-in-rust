@@ -1,5 +1,6 @@
-use std::{fmt::Debug, sync::{atomic::{AtomicBool, Ordering}, mpsc, Arc}};
-use futures::{executor::ThreadPool, future::BoxFuture, lock::Mutex, FutureExt};
+use std::{fmt::Debug, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use tokio::sync::mpsc;
+use futures::{future::BoxFuture, lock::Mutex, FutureExt};
 
 use crate::promise::Promise;
 
@@ -20,17 +21,16 @@ pub trait Batched {
 
     fn init() -> Self;
 
-    fn run_batch(&mut self, pool: futures::executor::ThreadPool, ops: Vec<WrappedOp<Self::Op>>)
+    fn run_batch(&mut self, ops: Vec<WrappedOp<Self::Op>>)
                  -> impl std::future::Future<Output = ()> + std::marker::Send;
 }
 
 
 struct BatcherInner<B : Batched> {
     data: Mutex<B>,
-    recv: Mutex<mpsc::Receiver<WrappedOp<B::Op>>>,
-    send: Mutex<mpsc::Sender<WrappedOp<B::Op>>>,
-    is_running: AtomicBool,
-    pool: futures::executor::ThreadPool
+    recv: Mutex<mpsc::UnboundedReceiver<WrappedOp<B::Op>>>,
+    send: Mutex<mpsc::UnboundedSender<WrappedOp<B::Op>>>,
+    is_running: AtomicBool
 }
 
 pub struct Batcher<B: Batched>(Arc<BatcherInner<B>>);
@@ -43,14 +43,13 @@ impl<B: Batched> Clone for Batcher<B> {
 }
 
 impl<B: Batched + Send + 'static> Batcher<B> {
-    pub fn new(pool: ThreadPool) -> Self {
-        let (send, recv) = mpsc::channel();
+    pub fn new() -> Self {
+        let (send, recv) = mpsc::unbounded_channel();
         Batcher(Arc::new(BatcherInner {
             data: Mutex::new(B::init()),
             recv: Mutex::new(recv),
             send: Mutex::new(send),
             is_running: AtomicBool::new(false),
-            pool,
         }))
     }
 
@@ -58,30 +57,26 @@ impl<B: Batched + Send + 'static> Batcher<B> {
         let self_clone = self.clone();
         async move {
                if let Ok(_) = self_clone.0.is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-                   let recv = self_clone.0.recv.lock().await;
-                if let Ok(op) = recv.try_recv() {
-                    let mut ops = vec![op];
-                    while let Ok(op) = recv.try_recv() {
-                        ops.push(op)
-                    }
-                    let pool_clone = self_clone.0.pool.clone();
+                let mut recv = self_clone.0.recv.lock().await;
+                let mut ops = vec![];
+                if recv.recv_many(&mut ops, 100).await > 0 {
                     let mut data = self_clone.0.data.lock().await;
-                    data.run_batch(pool_clone, ops).await;
+                    data.run_batch(ops).await;
                 }
+                drop(recv);
                 self_clone.0.is_running.store(false, Ordering::SeqCst);
-                self_clone.try_launch().await                        
+                tokio::spawn(async move {self_clone.try_launch().await}).await;
             } 
         }.boxed()
     }
 
     pub async fn run(&self, op : B::Op) -> <<B as Batched>::Op as BatchedOp>::Res {
-
         let (promise, set) = Promise::new();
         let wrapped_op = WrappedOp(op, Box::new(set));
         self.0.send.lock().await.send(wrapped_op).unwrap();
 
         let self_clone = self.clone();
-        self.0.pool.spawn_ok(async move { self_clone.try_launch().await });
+        tokio::spawn(async move { self_clone.try_launch().await });
         promise.await
     }
 

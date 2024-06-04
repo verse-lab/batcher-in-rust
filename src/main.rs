@@ -1,7 +1,8 @@
 #![feature(iter_array_chunks)]
 use futures::executor::ThreadPool;
-use futures::future::BoxFuture;
+use futures::future::{join_all, BoxFuture};
 use futures::{executor, task::SpawnExt, FutureExt};
+use tokio::join;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,8 +33,7 @@ impl Batched for Counter {
         Counter { value: 0}
     }
 
-    async fn run_batch(&mut self, pool: futures::executor::ThreadPool, ops: Vec<WrappedOp<CounterOp>>) {
-        println!("run batch of size {}", ops.len());
+    async fn run_batch(&mut self, ops: Vec<WrappedOp<CounterOp>>) {
         let vl = self.value;
         fn reduce(l: i32, r: i32) -> i32 { l + r }
         let map = move |op: WrappedOp<CounterOp>| -> i32 {
@@ -47,23 +47,20 @@ impl Batched for Counter {
              CounterOp::Get => 0,
              CounterOp::Incr => 1,
          }).fold(0, |l,r| {l + r});
-        let res = utils::parallel_reduce(pool.clone(), ops, reduce, map).await;
-        println!("result of update was {} == {}", res, det_res);
+        let res = utils::parallel_reduce(ops, reduce, map).await;
         self.value += res;
     }
 }
 
 
-
-fn main() {
-    let thread_pool = ThreadPool::new().unwrap();
-    let counter : Batcher<Counter> = Batcher::new(thread_pool.clone());
-
+#[tokio::main]
+async fn main() {
+    let counter : Batcher<Counter> = Batcher::new();
 
     let mut tasks : Vec<_> =
-        (1..100).map(|i| {
+        (1..1000).map(|i| {
             let counter_local = counter.clone();
-            thread_pool.spawn_with_handle(async move {
+            tokio::spawn(async move {
                 if i % 10 == 0 {
                     let res = counter_local.run(CounterOp::Get).await;
                     println!("[task {}]: result of getting counter was {:?}", i, res)
@@ -71,11 +68,8 @@ fn main() {
                     let res = counter_local.run(CounterOp::Incr).await;
                     println!("[task {}]: result of incr counter was {:?}", i, res)
                 }
-            }).unwrap()
+            })
         }).collect();
 
-
-    thread::sleep(Duration::from_millis(5000))
-    
-    // futures::executor::block_on(futures::future::join_all(tasks));
+    let _ = join_all(tasks).await;
 }

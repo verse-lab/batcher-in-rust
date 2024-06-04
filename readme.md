@@ -7,7 +7,19 @@ be checked at run time, but oh, well....
 
 ## Building & Running
 
-Clone the project, and then run `cargo build` and then `cargo run`.
+You will need a nightly build of `rustc` to build this project. It can be installed as:
+
+```
+rustup install nightly
+rustup default nightly
+```
+
+Next, clone the project, and then run `cargo build` and then `cargo run`.
+
+You can switch back to a stable `rustc` release by executing
+
+```
+```
 
 ## Counter 
 

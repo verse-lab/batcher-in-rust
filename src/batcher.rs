@@ -70,7 +70,7 @@ impl<B: Batched + Send + 'static> Batcher<B> {
         }.boxed()
     }
 
-    pub async fn run(&self, op : B::Op) -> <<B as Batched>::Op as BatchedOp>::Res {
+    pub async fn apply(&self, op : B::Op) -> <<B as Batched>::Op as BatchedOp>::Res {
         let (promise, set) = Promise::new();
         let wrapped_op = WrappedOp(op, Box::new(set));
         self.0.send.lock().await.send(wrapped_op).unwrap();

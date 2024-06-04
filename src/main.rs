@@ -56,15 +56,15 @@ async fn main() {
             let counter_local = counter.clone();
             tokio::spawn(async move {
                 if i % 10 == 0 {
-                    let res = counter_local.run(CounterOp::Get).await;
+                    let res = counter_local.apply(CounterOp::Get).await;
                     println!("[task {}]: result of getting counter was {:?}", i, res)
                 } else {
-                    let res = counter_local.run(CounterOp::Incr).await;
+                    let res = counter_local.apply(CounterOp::Incr).await;
                     println!("[task {}]: result of incr counter was {:?}", i, res)
                 }
             })
         }).collect();
 
     let _ = join_all(tasks).await;
-    println!("final counter value: {:?}", counter.run(CounterOp::Get).await);
+    println!("final counter value: {:?}", counter.apply(CounterOp::Get).await);
 }

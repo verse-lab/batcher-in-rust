@@ -67,4 +67,5 @@ async fn main() {
         }).collect();
 
     let _ = join_all(tasks).await;
+    println!("final counter value: {:?}", counter.run(CounterOp::Get).await);
 }

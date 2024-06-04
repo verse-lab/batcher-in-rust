@@ -5,6 +5,10 @@ paper can be implemented in Rust --- the lack of GADTs means that
 fewer constraints can be encoded into the type system and more have to
 be checked at run time, but oh, well....
 
+## Building & Running
+
+Clone the project, and then run `cargo build` and then `cargo run`.
+
 ## Counter 
 
 Let's implement a counter, the first example from the paper:

@@ -29,7 +29,7 @@ pub trait Batched {
 struct BatcherInner<B : Batched> {
     data: Mutex<B>,
     recv: Mutex<mpsc::UnboundedReceiver<WrappedOp<B::Op>>>,
-    send: Mutex<mpsc::UnboundedSender<WrappedOp<B::Op>>>,
+    send: mpsc::UnboundedSender<WrappedOp<B::Op>>,
     is_running: AtomicBool
 }
 
@@ -48,14 +48,14 @@ impl<B: Batched + Send + 'static> Batcher<B> {
         Batcher(Arc::new(BatcherInner {
             data: Mutex::new(B::init()),
             recv: Mutex::new(recv),
-            send: Mutex::new(send),
+            send: send,
             is_running: AtomicBool::new(false),
         }))
     }
 
     fn try_launch(&self) -> BoxFuture<'static, ()> {
         let self_clone = self.clone();
-        async move {
+        async {
                if let Ok(_) = self_clone.0.is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
                 let mut recv = self_clone.0.recv.lock().await;
                 let mut ops = vec![];
@@ -65,7 +65,7 @@ impl<B: Batched + Send + 'static> Batcher<B> {
                 }
                 drop(recv);
                 self_clone.0.is_running.store(false, Ordering::SeqCst);
-                tokio::spawn(async move {self_clone.try_launch().await}).await;
+                tokio::spawn(async move {self_clone.try_launch().await});
             } 
         }.boxed()
     }
@@ -73,7 +73,7 @@ impl<B: Batched + Send + 'static> Batcher<B> {
     pub async fn apply(&self, op : B::Op) -> <<B as Batched>::Op as BatchedOp>::Res {
         let (promise, set) = Promise::new();
         let wrapped_op = WrappedOp(op, Box::new(set));
-        self.0.send.lock().await.send(wrapped_op).unwrap();
+        self.0.send.send(wrapped_op).unwrap();
 
         let self_clone = self.clone();
         tokio::spawn(async move { self_clone.try_launch().await });
